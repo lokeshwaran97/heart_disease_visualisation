@@ -1,0 +1,209 @@
+---
+title: "Cleveland Heart Disease Data Visualisation"
+author: "Lokeshwaran Arunachalam"
+date: "2023-03-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Importing Libraries
+```{r cars}
+library(ggplot2)
+library(dplyr)
+library(scales)
+library(stats)
+library(ggmosaic)
+```
+
+```{r}
+#supress warning message from dplyr 
+options(dplyr.summarise.inform = FALSE)
+```
+
+Data Loading
+```{r}
+#the data from the file is loaded into dataframe using read.table() function, header=False indicates the data has no header and the parameter sep="," is used to read csv files seperated by ","
+df <-  read.table("processed.cleveland.data", header=FALSE, sep=",") 
+```
+
+```{r}
+# the column names were added manually as described from heart-disease.names file
+col<-c("age", "sex", "cp", "trestbps", "chol", "fbs", "restecg", "thalach", "exang", "oldpeak", "slope", "ca", "thal", "num")
+colnames(df)<-col 
+```
+
+Data manipulation
+```{r}
+# the columns with number of missing values which is represented by '?' is shown
+colSums(df == '?', na.rm = TRUE)
+```
+
+```{r}
+# the rows of the columns with missing values are removed
+df <- subset(df, ca != '?' & thal != '?')
+colSums(df == '?', na.rm = TRUE)
+```
+
+
+```{r}
+# new attribute called target is created to classify between patients with and without heart disease
+df$target <- 0
+df$target[df$num > 0] <- 1
+```
+
+```{r}
+# new attribute called age_group is created where patients of different age groups were grouped together
+df$age_group <- '90+'
+df$age_group[df$age >=0 & df$age<=17] <- '1-17'
+df$age_group[df$age >=18 & df$age<=30] <- '18-30'
+df$age_group[df$age >=31 & df$age<=40] <- '31-40'
+df$age_group[df$age >=41 & df$age<=50] <- '41-50'
+df$age_group[df$age >=51 & df$age<=60] <- '51-60'
+df$age_group[df$age >=61 & df$age<=70] <- '61-70'
+df$age_group[df$age >=71 & df$age<=80] <- '71-80'
+df$age_group[df$age >=81 & df$age<=90] <- '81-90'
+
+```
+
+Analysis and Visualisation 
+
+Q1 a) who is more vulnerable to heart disease is it male or female?
+```{r}
+grouped_data_sex_target <- df %>%
+  group_by(sex, target) %>% #data is grouped based on sex and heart disease
+  summarize(n = n()) %>%  #the number of observation in each group is calculated 
+  mutate(percent = n/sum(n), #the percentage of observation in each group is calculated
+  perc_label = scales::percent(percent)) # the percentage label is added
+
+percent <- c("0%", "20%","40%","60%","80%", "100%") # values for the Y axis
+
+ggplot(grouped_data_sex_target, aes(x = factor(sex), y = percent, fill = factor(target))) + # manipulated data is passed to ggplot where x and y column names were passed and factor() is used to convert integer to categorical values and the fill values is used to represent heart disease. 
+  scale_fill_manual(values=c("#23C552", "#F84F31"), labels = c("No", "Yes")) + # the colour and labels for the fill param is passed
+  labs(y = "Percentage of patients", x = "Sex", fill = "Heart disease") + # fill, X and Y axis labels were added
+  scale_x_discrete(labels = c("Female", "Male")) + # X axis labels were added
+  scale_y_continuous(breaks = seq(0, 1, .2), label = percent)+ # Y axis values
+  geom_bar(stat="identity", position = "fill")+ #bar chart with property stat = identity is used to represent the height of the bar and position = fill indicates the data category were stacked on the bar chart
+  geom_text(aes(label = perc_label), size = 3,position = position_stack(vjust = 0.6)) + #percentage label properties such as size and position
+  guides(fill=guide_legend(reverse=TRUE)) + # fill legend values were reversed
+  theme_minimal() + # to remove the background colour and axis lines
+  ggtitle("Percentage of patients based on Gender")  # title
+  
+```
+
+
+
+Q1.b)Does older age patients were more vulnerable to heart disease than younger ones and is there any interaction between gender and age in order to predict heart disease?
+
+```{r}
+group_gender_age_data <- df %>%
+  mutate(gender = ifelse(sex == 0, "Female", "Male")) %>% # new attribute called gender is created for the label to be shown in the graph
+  group_by(gender, age_group, target) %>% #gender, age_group, target columns were grouped together
+  summarize(n = n()) %>% # number of observation in each group were calculated
+  mutate(pct = n/sum(n), # percentage of observation is calculated
+         lbl = scales::percent(pct)) #label for the observation is added 
+
+percent <- c("0%", "20%","40%","60%","80%", "100%") # y axis labels
+ggplot(group_gender_age_data, aes(x = factor(age_group), y = pct, fill = factor(target))) + # X axis as age group and y axis as percentage of patients and stacked bar category will be target
+facet_wrap(~gender) + # the subplots were based on gender
+scale_fill_manual(values=c("#23C552", "#F84F31"), labels = c("No", "Yes")) + # the colour and label values for target column is specified
+guides(fill=guide_legend(reverse=TRUE)) + #the legend labels were reversed
+labs(y = "Percentage of patients", x = "age group",fill = "Heart Disease") + #X and Y axis labels 
+geom_bar(aes(y = pct),stat="identity", position = "fill") + #bar chart with property stat = identity is used to represent the height of the bar and position = fill indicates the data category were stacked on the bar chart
+scale_y_continuous(breaks = seq(0, 1, .2), label = percent)+ # Y axis labels and the no of breaks  
+geom_text(aes(label = lbl), size = 3,position = position_stack(vjust = 0.6)) + # the size , position and label of percentage of each data grouped is mentioned
+theme_minimal() # to remove the background colour and axis lines
+
+```
+
+
+
+Q2) How maximum heart rate is associated with different chest pain types among patients of various ages?
+
+```{r}
+df <- df %>% mutate(objective = ifelse(target == 0, "Normal", "Heart Disease")) # new attribute objective is created based on target attribute
+ggplot(df, aes(x = age, y = thalach , colour=factor(cp))) + # X axis as age and y axis as thalach(max heart rate) and colour as cp (chest pain) is passed to ggplot function
+facet_wrap(~factor(objective)) + # subplots based on objective attribute
+geom_point()+# scatter plot will be used to plot
+labs(y = "Maximum Heart Rate (bpm)", x = "Age", colour="Chest Pain Type") + # Label values of colour, X and Y axis
+scale_colour_manual(values = c("#B2FF33","#FFE333","#FF8633","#FF4633"),labels = c("Asymptomatic", "Non-anginal pain","Typical angina", "Atypical angina"), limits = factor(c(4,3,1,2))) +  #the colour values, labels and order were specified
+geom_abline(slope = -1, intercept = 220, linetype = "dashed", color = "black") + # average maximum heart rate line
+geom_smooth(method = "lm", formula = y ~ x, se = TRUE, level = 0.95, color = "blue", linetype = "dashed") #predicted maximum heart based on samples
+```
+
+
+
+Q3)Is the ST depression (a sign of reduced blood flow to the heart) and ST slope during exercise and a number of blood vessels coloured by fluoroscopy at different ages can be used to diagnose a heart condition.
+
+```{r}
+mutate_blood_vessel <- function(val){ # mutate_blood_vessel takes a integer value as parameter and return a string which represents number of damaged blood vessels 
+  sapply(as.character(val), function(val){
+          if(val == "0.0"){
+              return ("0 blood vessels")
+            }else if(val == "1.0"){
+              return ("1 blood vessels")
+            }else if(val == "2.0"){
+              return ("2 blood vessels")
+            }else if(val == "3.0"){
+              return ("3 blood vessels")
+            }
+     })
+}
+
+df <- df %>% mutate(blood_vessels = mutate_blood_vessel(ca)) # new attribute blood_vessels is created from ca column as parameter and mutate_blood_vessel as function
+ggplot(df, aes(x=age, y=oldpeak, color=factor(target))) + # X axis as age, Y axis as ST depression  and heart patient is the colour value
+geom_point() + # values are represented in points for X and Y axis
+facet_grid(slope ~ blood_vessels, labeller = labeller(slope = c("1" = "upsloping", "2" = "flat", "3"="downsloping"))) + #the subplots were based on slope and blood vessel attribute and label value for slope is mentioned
+labs(colour = "Heart Disease", x = "Age", y = "ST Depression") + #colour, X and Y axis Label
+scale_color_manual(values = c("green", "red"), labels = c("No", "Yes")) +  # colour and label values for the legend 
+guides(colour=guide_legend(reverse=TRUE))  # the legend labels are reversed
+```
+
+
+
+Q4 a)Does increase in number of damaged blood vessel will affect the condition of heart muscle.
+```{r}
+mutate_heart_defect <- function(x){ # heart defect condition values retured based on numerical value given on dataset
+  sapply(x, function(x){
+          if(x == "3.0"){
+              return ("Normal")
+            }else if(x == "6.0"){
+              return ("Fixed Defect")
+            }else{
+              return ("Reversable Defect")
+            }
+     })
+}
+
+df <- df %>% mutate(heart_defect = mutate_heart_defect(thal)) #heart_defect attribute created using mutate_heart_defect
+df$heart_defect <- factor(df$heart_defect, levels = c("Normal", "Reversable Defect", "Fixed Defect")) # the order of the heart defect values is mentioned
+ggplot(data = df) + # dataset is passed to the ggplot function
+geom_mosaic(aes(x = product(heart_defect, ca), fill=heart_defect)) +  #mosaic plot is used 
+labs(fill = "Condition of Heart muscle", x = "Number of damaged heart blood vessels") + #fill and x axis label values 
+scale_fill_manual(values = c("Normal" = "#C1FF33", "Reversable Defect" = "#FFEC33", "Fixed Defect" = "#FF6133")) + #the colour values for the condition of heart muscles
+guides(fill = guide_legend(reverse=TRUE)) +  #the legend values are reversed 
+ggtitle("The influence of damaged blood vessels on the heart muscle") + #title of the chart
+theme(axis.title.y = element_blank()) + #y axis values removed
+scale_y_continuous(breaks = NULL)  #y axis breaks removed
+```
+
+
+
+Q4 b) How the heart muscle condition and damaged blood vessels vary with gender?
+```{r}
+
+df <- df %>% mutate(gender = ifelse(sex == 0, "Female", "Male")) # new attribute gender is created to show gender string values in chart
+ggplot(data = df) + # data is passed to ggplot  
+
+geom_mosaic(aes(x = product(heart_defect, ca), fill=heart_defect)) + #mosaic plot attributes were passed
+labs(fill = "Condition of Heart muscle", x = "Number of damaged heart blood vessels") + #fill and x label values 
+scale_fill_manual(values = c("Normal" = "#C1FF33", "Reversable Defect" = "#FFEC33", "Fixed Defect" = "#FF6133")) +
+guides(fill = guide_legend(reverse=TRUE)) +  #the legend values were reversed
+facet_grid(~gender) + #subplot based on gender
+theme(axis.title.y = element_blank()) +  #y axis values removed
+scale_y_continuous(breaks = NULL) +  #y axis breaks removed
+ggtitle("The influence of damaged blood vessels in the heart muscle based on gender") 
+
+```
